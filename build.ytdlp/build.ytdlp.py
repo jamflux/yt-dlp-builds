@@ -4,19 +4,16 @@ import subprocess
 import shutil
 import urllib.request
 import zipfile
+import glob
 import ctypes
 import time
-import threading
-import stat
-import glob
 import winreg
-from datetime import datetime
 
 # ==============================================================================
-#                               DISEÑO VISUAL (THEME)
+#                               CONFIGURACIÓN VISUAL
 # ==============================================================================
 try:
-    ctypes.windll.kernel32.SetConsoleTitleW("Flux Builder - Official Release (Patched)")
+    ctypes.windll.kernel32.SetConsoleTitleW("Flux Builder - Official Final Fix")
 except:
     pass
 
@@ -26,288 +23,209 @@ class JF_Theme:
     GREEN = '\033[38;5;82m'
     GOLD = '\033[38;5;220m' 
     RED = '\033[38;5;196m'
-    GREY = '\033[38;5;240m'
     BOLD = '\033[1m'
     RESET = '\033[0m'
     
     BANNER = f"""
-    {PURPLE}   ███████╗██╗     ██╗   ██╗██╗  ██╗
-    ██╔════╝██║     ██║   ██║╚██╗██╔╝
-    █████╗  ██║     ██║   ██║ ╚███╔╝ 
-    ██╔══╝  ██║     ██║   ██║ ██╔██╗ 
-    ██║     ███████╗╚██████╔╝██╔╝ ██╗
-    ╚═╝     ╚══════╝ ╚═════╝ ╚═╝  ╚═╝
-    {CYAN}    >> ONE CLICK COMPILER FOR YT-DPL - by JamFlux << {RESET}"""
+{PURPLE}{'='*63}{RESET}
+{CYAN}    >> ONE CLICK YT-DLP BUILDER - FLUX DIGITAL - JAMFLUX << {RESET}"""
 
-# ==============================================================================
-#                               CLASE ANIMACIÓN (SPINNER)
-# ==============================================================================
-class Spinner:
-    def __init__(self, message="Procesando...", color=JF_Theme.CYAN):
-        self.message = message
-        self.color = color
-        self.busy = False
-        self.delay = 0.1
-        self.spinner_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
-        
-    def spinner_task(self):
-        while self.busy:
-            for char in self.spinner_chars:
-                sys.stdout.write(f'\r {self.color}{char}{JF_Theme.RESET} {self.message}')
-                sys.stdout.flush()
-                time.sleep(self.delay)
-                if not self.busy: break
-                
-    def __enter__(self):
-        self.busy = True
-        self.t = threading.Thread(target=self.spinner_task)
-        self.t.start()
-        return self
-
-    def __exit__(self, exception, value, tb):
-        self.busy = False
-        time.sleep(self.delay)
-        if exception:
-            sys.stdout.write(f'\r {JF_Theme.RED}✖{JF_Theme.RESET} {self.message} -> {JF_Theme.RED}FALLÓ{JF_Theme.RESET}\n')
-        else:
-            sys.stdout.write(f'\r {JF_Theme.GREEN}✔{JF_Theme.RESET} {self.message} -> {JF_Theme.GREEN}COMPLETADO{JF_Theme.RESET}\n')
-        sys.stdout.flush()
-
-def draw_interface(step_name, progress_percent):
+def jf_refresh(status_msg, progress=0):
     os.system('cls' if os.name == 'nt' else 'clear')
     print(JF_Theme.BANNER)
-    print(f"{JF_Theme.PURPLE}{'='*60}{JF_Theme.RESET}\n")
-    
-    width = 40
-    filled = int(width * progress_percent // 100)
-    bar = f"{JF_Theme.GREEN}━{JF_Theme.RESET}" * filled + f"{JF_Theme.GREY}━{JF_Theme.RESET}" * (width - filled)
-    
-    print(f"  {JF_Theme.BOLD}PROGRESO GENERAL:{JF_Theme.RESET}  {progress_percent}%")
-    print(f"  {bar}\n")
-    print(f"  {JF_Theme.BOLD}TAREA ACTUAL:{JF_Theme.RESET}      {JF_Theme.GOLD}{step_name}{JF_Theme.RESET}\n")
-    print(f"{JF_Theme.PURPLE}{'-'*60}{JF_Theme.RESET}\n")
+    print(f"{JF_Theme.PURPLE}{'='*63}{JF_Theme.RESET}\n")
+    print(f" {JF_Theme.BOLD}{JF_Theme.GOLD}[ FASE ]:{JF_Theme.RESET} {JF_Theme.CYAN}{status_msg}{JF_Theme.RESET}\n")
+    filled = int(35 * progress // 100)
+    bar = f"{JF_Theme.GREEN}█{JF_Theme.RESET}" * filled + f"{JF_Theme.PURPLE}░{JF_Theme.RESET}" * (35 - filled)
+    print(f" {bar} {JF_Theme.BOLD}{progress}%{JF_Theme.RESET}\n")
 
 # ==============================================================================
-#                               LOGICA INTERNA
+#                               LÓGICA DEL SISTEMA
 # ==============================================================================
 
-def run_command_silent(cmd, cwd=None):
-    startupinfo = None
-    if os.name == 'nt':
-        startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        
-    proc = subprocess.run(
-        cmd, 
-        cwd=cwd, 
-        stdout=subprocess.PIPE, 
-        stderr=subprocess.PIPE, 
-        text=True,
-        startupinfo=startupinfo
-    )
-    
-    if proc.returncode != 0:
-        raise Exception(f"Error en comando: {' '.join(cmd)}\n{proc.stderr}")
+def run_silent(cmd, cwd=None, env=None):
+    try:
+        subprocess.run(
+            cmd, 
+            cwd=cwd, 
+            env=env, 
+            check=True, 
+            stdout=subprocess.DEVNULL, 
+            stderr=subprocess.PIPE,
+            text=True
+        )
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr if e.stderr else "Error desconocido"
+        raise Exception(f"Fallo en: {cmd[0] if isinstance(cmd, list) else cmd}\nDetalle: {error_msg}")
 
-# --- DETECCIÓN BLINDADA DE PYTHON (FIX WINDOWS APPS) ---
 def validar_python(path):
     if not path or not os.path.exists(path): return False
-    if "WindowsApps" in path: return False # Bloqueo explícito a la tienda
+    if "WindowsApps" in path: return False 
     try:
-        res = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=2)
+        res = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=5)
         if res.returncode == 0: return True
     except: return False
     return False
 
-def encontrar_python():
-    # 1. Si ejecutamos desde .py, probar el actual
+def encontrar_python_real():
     if not getattr(sys, 'frozen', False):
         if validar_python(sys.executable): return sys.executable
 
     candidatos = []
-    
-    # 2. Rutas comunes
     user_path = os.path.expanduser("~")
-    common_paths = [
+    rutas_comunes = [
         os.path.join(user_path, r"AppData\Local\Programs\Python"),
         r"C:\Program Files\Python",
         r"C:\Python"
     ]
-    for root in common_paths:
+    for root in rutas_comunes:
         if os.path.exists(root):
             for item in glob.glob(os.path.join(root, "Python3*")):
                 exe = os.path.join(item, "python.exe")
                 if os.path.exists(exe): candidatos.append(exe)
 
-    # 3. Registro de Windows
-    hives = [winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE]
-    for hive in hives:
-        try:
-            key = winreg.OpenKey(hive, r"SOFTWARE\Python\PythonCore")
-            i = 0
-            while True:
-                try:
-                    ver = winreg.EnumKey(key, i)
-                    path_key = winreg.OpenKey(key, f"{ver}\\InstallPath")
-                    val, _ = winreg.QueryValueEx(path_key, "")
-                    exe = os.path.join(val, "python.exe")
-                    if validar_python(exe): candidatos.append(exe)
-                    i += 1
-                except OSError: break
-        except: pass
+    try:
+        hives = [winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE]
+        for hive in hives:
+            try:
+                key = winreg.OpenKey(hive, r"SOFTWARE\Python\PythonCore")
+                i = 0
+                while True:
+                    try:
+                        ver = winreg.EnumKey(key, i)
+                        path_key = winreg.OpenKey(key, f"{ver}\\InstallPath")
+                        val, _ = winreg.QueryValueEx(path_key, "")
+                        exe = os.path.join(val, "python.exe")
+                        if validar_python(exe): candidatos.append(exe)
+                        i += 1
+                    except OSError: break
+            except: pass
+    except: pass
 
-    # 4. Filtrar candidatos
     for py in candidatos:
         if validar_python(py): return py
 
-    raise Exception("No se encontró una instalación de Python válida (No WindowsApps). Instala Python desde python.org")
+    if shutil.which("python") and validar_python(shutil.which("python")):
+        return shutil.which("python")
 
-def descargar_upx():
-    if os.path.exists("upx.exe"): return
-    url = "https://github.com/upx/upx/releases/download/v4.2.2/upx-4.2.2-win64.zip"
-    urllib.request.urlretrieve(url, "upx.zip")
-    with zipfile.ZipFile("upx.zip", 'r') as z:
-        for f in z.namelist():
-            if f.endswith("upx.exe"):
-                with open("upx.exe", "wb") as dest:
-                    dest.write(z.read(f))
-                break
-    try: os.remove("upx.zip") 
-    except: pass
+    raise Exception("No se encontró Python instalado. Instálalo desde python.org")
 
-def force_remove_readonly(func, path, exc_info):
+def setup_upx():
+    if os.path.exists("upx.exe"): return True
     try:
-        os.chmod(path, stat.S_IWRITE)
-        func(path)
-    except: pass 
+        url = "https://github.com/upx/upx/releases/download/v4.2.2/upx-4.2.2-win64.zip"
+        urllib.request.urlretrieve(url, "upx.zip")
+        with zipfile.ZipFile("upx.zip", 'r') as z:
+            for f in z.namelist():
+                if f.endswith("upx.exe"):
+                    with open("upx.exe", "wb") as dest: dest.write(z.read(f))
+                    break
+        try: os.remove("upx.zip")
+        except: pass
+        return True
+    except: return False
 
-def limpiar_area():
-    items = [
-        "build", "dist", "yt-dlp-master", "devscripts", "yt_dlp", "bundle",
-        "source.zip", "version_info.txt", "upx.exe", "upx.zip", "yt-dlp.spec"
-    ]
-    time.sleep(1)
-    for item in items:
-        if os.path.exists(item):
-            try:
-                if os.path.isdir(item): shutil.rmtree(item, onerror=force_remove_readonly)
-                else: os.remove(item)
-            except:
-                if os.name == 'nt':
-                    subprocess.run(f'del /f /q "{item}"' if os.path.isfile(item) else f'rmdir /s /q "{item}"', shell=True, stdout=subprocess.DEVNULL)
+def cleanup():
+    folders = ["build", "dist", "yt-dlp-master", "devscripts", "yt_dlp", "bundle"]
+    for c in folders:
+        if os.path.exists(c):
+            try: shutil.rmtree(c, ignore_errors=True)
+            except: pass
+    files = ["source.zip", "upx.zip", "upx.exe", "yt-dlp.spec"]
+    for f in files:
+        if os.path.exists(f):
+            try: os.remove(f)
+            except: pass
 
-def aplicar_parche_seguridad(repo_dir):
+# ==============================================================================
+#                               CORRECCIÓN DE RUTA (SIN ROMPER CÓDIGO)
+# ==============================================================================
+
+def arreglar_ruta_metadatos(repo_dir):
     """
-    Edita el script oficial bundle/pyinstaller.py para evitar el crash de WinError 2.
-    Envuelve la llamada set_version_info en un try-except.
+    Modifica bundle/pyinstaller.py para usar RUTAS ABSOLUTAS.
+    IMPORTANTE: No inyectamos 'import os' porque ya existe globalmente.
     """
-    target_file = os.path.join(repo_dir, "bundle", "pyinstaller.py")
-    if not os.path.exists(target_file):
-        return # Si cambia la estructura en el futuro, no rompemos nada, solo seguimos
+    bundler = os.path.join(repo_dir, "bundle", "pyinstaller.py")
+    if os.path.exists(bundler):
+        with open(bundler, "r", encoding="utf-8") as f:
+            code = f.read()
         
-    try:
-        with open(target_file, "r", encoding="utf-8") as f:
-            content = f.read()
+        target = "set_version_info(final_file, version)"
+        # FIX: Solo forzamos path absoluto, asumiendo que 'os' ya está importado (que lo está).
+        fix = "final_file = os.path.abspath(final_file); set_version_info(final_file, version)"
         
-        # Buscamos la línea conflictiva
-        original_code = "set_version_info(final_file, version)"
-        patched_code = """
-    try:
-        set_version_info(final_file, version)
-    except Exception as e:
-        print(f"FluxPatch Warning: Version info could not be set: {e}")
-        """
-        
-        if original_code in content:
-            content = content.replace(original_code, patched_code)
-            
-            with open(target_file, "w", encoding="utf-8") as f:
-                f.write(content)
+        if target in code:
+            code = code.replace(target, fix)
+            with open(bundler, "w", encoding="utf-8") as f:
+                f.write(code)
             return True
-    except:
-        return False
     return False
 
 # ==============================================================================
 #                               MAIN
 # ==============================================================================
 def main():
-    start_time = time.time()
-    
     try:
-        draw_interface("Limpiando zona de trabajo...", 0)
-        limpiar_area()
+        py = encontrar_python_real()
+        cleanup()
         
-        draw_interface("Buscando Python real...", 5)
-        py_exe = encontrar_python()
+        jf_refresh("Cargando motor UPX...", 10)
+        has_upx = setup_upx()
         
-        # 1. PREPARACIÓN DE ENTORNO
-        draw_interface("Verificando herramientas...", 10)
-        with Spinner(f"Usando motor: {os.path.basename(py_exe)}..."):
-            descargar_upx()
-            # Añadir UPX al path actual para que el bundle oficial lo vea
-            os.environ["PATH"] += os.pathsep + os.getcwd()
-
-        # 2. DESCARGA
-        draw_interface("Descargando código fuente...", 25)
-        with Spinner("Bajando Master Branch de GitHub..."):
-            urllib.request.urlretrieve("https://github.com/yt-dlp/yt-dlp/archive/refs/heads/master.zip", "source.zip")
-            with zipfile.ZipFile("source.zip", 'r') as z: z.extractall(".")
+        env = os.environ.copy()
+        if has_upx: 
+            env["PATH"] = os.getcwd() + os.pathsep + env["PATH"]
         
-        repo_dir = os.path.abspath("yt-dlp-master")
-        if not os.path.exists(repo_dir): raise Exception("Fallo al descomprimir.")
-
-        # --- FASE DE PARCHEO ---
-        draw_interface("Aplicando parches de seguridad...", 35)
-        with Spinner("Blindando script oficial contra errores de Windows..."):
-            aplicar_parche_seguridad(repo_dir)
-
-        # 3. DEPENDENCIAS
-        draw_interface("Configurando dependencias...", 45)
-        with Spinner("Instalando librerías oficiales..."):
-            # python devscripts/install_deps.py --include-extra pyinstaller
-            script = os.path.join(repo_dir, "devscripts", "install_deps.py")
-            run_command_silent([py_exe, script, "--include-extra", "pyinstaller"])
-
-        # 4. OPTIMIZACIÓN
-        draw_interface("Optimizando código...", 65)
-        with Spinner("Generando extractores perezosos (Lazy Extractors)..."):
-            script = os.path.join(repo_dir, "devscripts", "make_lazy_extractors.py")
-            run_command_silent([py_exe, script], cwd=repo_dir)
-
-        # 5. COMPILACIÓN OFICIAL
-        draw_interface("Compilando binario final...", 85)
-        with Spinner("Empaquetando con PyInstaller + UPX..."):
-            # El script oficial detecta UPX automáticamente si está en PATH o carpeta
-            run_command_silent([py_exe, "-m", "bundle.pyinstaller"], cwd=repo_dir)
-
-        # 6. FINALIZACIÓN
-        draw_interface("Finalizando...", 95)
-        src_exe = os.path.join(repo_dir, "dist", "yt-dlp.exe")
-        target_exe = "yt-dlp.exe"
+        jf_refresh("Descargando código oficial...", 25)
+        urllib.request.urlretrieve("https://github.com/yt-dlp/yt-dlp/archive/refs/heads/master.zip", "source.zip")
+        with zipfile.ZipFile("source.zip", 'r') as z: z.extractall(".")
         
-        if os.path.exists(src_exe):
-            if os.path.exists(target_exe): 
-                try: os.remove(target_exe)
-                except: pass 
+        repo = os.path.abspath("yt-dlp-master")
+        
+        # Aplicamos la corrección para que Windows no pierda el archivo al final
+        arreglar_ruta_metadatos(repo)
+        
+        jf_refresh("Instalando dependencias...", 45)
+        deps = ["mutagen", "pycryptodomex", "websockets", "brotli", "certifi", "requests", "pyinstaller"]
+        run_silent([py, "-m", "pip", "install"] + deps + ["--disable-pip-version-check"])
+        
+        jf_refresh("Optimizando (Lazy Extractors)...", 60)
+        run_silent([py, "devscripts/make_lazy_extractors.py"], cwd=repo)
+        
+        jf_refresh("Compilando Binario Oficial...", 80)
+        run_silent([py, "-m", "bundle.pyinstaller"], cwd=repo, env=env)
+        
+        jf_refresh("Finalizando...", 95)
+        src = os.path.join(repo, "dist", "yt-dlp.exe")
+        dst = "yt-dlp.exe"
+        
+        if os.path.exists(src):
+            if os.path.exists(dst): os.remove(dst)
+            shutil.move(src, dst)
+            size = os.path.getsize(dst) / (1024 * 1024)
+            cleanup()
+            
+            # Semáforo de peso
+            col = JF_Theme.GREEN if size < 25 else JF_Theme.RED
+            jf_refresh(f"¡HECHO! Peso: {col}{size:.2f} MB{JF_Theme.RESET}", 100)
+            
+            print(f"\n  {JF_Theme.CYAN}Estado:{JF_Theme.RESET}    Compilación Oficial Exitosa")
+            print(f"  {JF_Theme.GOLD}Motor:{JF_Theme.RESET}     {os.path.basename(py)}")
+            print(f"  {JF_Theme.GOLD}Tamaño:{JF_Theme.RESET}    {col}{size:.2f} MB{JF_Theme.RESET}")
+            
+            if size > 25:
+                print(f"\n  {JF_Theme.RED}⚠  ADVERTENCIA:{JF_Theme.RESET} El archivo supera los 25MB.")
+            else:
+                print(f"\n  {JF_Theme.GREEN}✔  EXCELENTE:{JF_Theme.RESET} Apto para GitHub (<25MB).")
                 
-            shutil.move(src_exe, target_exe)
-            
-            with Spinner("Ejecutando limpieza profunda..."):
-                limpiar_area()
-            
-            size = os.path.getsize(target_exe) / (1024*1024)
-            draw_interface("¡PROCESO COMPLETADO!", 100)
-            print(f"\n  {JF_Theme.GREEN}✔ ARCHIVO GENERADO:{JF_Theme.RESET} {target_exe}")
-            print(f"  {JF_Theme.GOLD}⚖ TAMAÑO FINAL:{JF_Theme.RESET}     {size:.2f} MB")
-            print(f"  {JF_Theme.CYAN}⏱ TIEMPO TOTAL:{JF_Theme.RESET}     {int(time.time() - start_time)} segundos\n")
-            
+            time.sleep(5)
         else:
-            raise Exception("No se generó el archivo .exe final.")
+            print(f"\n {JF_Theme.RED}[ERROR] No se generó el EXE.{JF_Theme.RESET}")
+            input()
 
     except Exception as e:
-        limpiar_area()
-        print(f"\n\n{JF_Theme.RED}ERROR FATAL:{JF_Theme.RESET} {e}")
+        print(f"\n{JF_Theme.RED}ERROR CRITICO:{JF_Theme.RESET} {e}")
         input()
 
 if __name__ == "__main__":
